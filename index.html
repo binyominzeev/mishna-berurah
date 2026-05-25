@@ -296,7 +296,10 @@
   }
 
   async function getLinkedMbSeifim(siman, seif) {
-    if (st.mbLinksBySeif[seif]) return st.mbLinksBySeif[seif];
+    if (!st.mbLinksBySeif[siman]) st.mbLinksBySeif[siman] = {};
+    if (Object.prototype.hasOwnProperty.call(st.mbLinksBySeif[siman], seif)) {
+      return st.mbLinksBySeif[siman][seif];
+    }
 
     const anchorRef = `Shulchan Arukh, Orach Chayim.${siman}.${seif}`;
     const url = `https://www.sefaria.org/api/links/${encodeURIComponent(anchorRef)}`;
@@ -311,16 +314,17 @@
         || /^Mishnah Berurah /.test(item?.ref || '');
       if (!isMB) return;
 
-      const refs = []
-        .concat(parseMbRef(item?.sourceRef))
-        .concat(parseMbRef(item?.ref));
+      const refs = [
+        ...parseMbRef(item?.sourceRef),
+        ...parseMbRef(item?.ref)
+      ];
       refs.forEach(r => {
         if (r.siman === siman && r.seif > 0) mbSet.add(r.seif);
       });
     });
 
     const result = [...mbSet].sort((a, b) => a - b);
-    st.mbLinksBySeif[seif] = result;
+    st.mbLinksBySeif[siman][seif] = result;
     return result;
   }
 
