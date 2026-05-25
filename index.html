@@ -264,7 +264,14 @@
   const toHeb = n => (n > 0 && n < HEB_NUM.length) ? HEB_NUM[n] : String(n);
 
   /* ── App state ───────────────────────────────────────── */
-  const st = { siman: 1, seif: 1, saSeifim: [], mbSeifim: [] };
+  const st = {
+    siman: 1,
+    seif: 1,
+    saSeifim: [],
+    mbSeifim: [],
+    mbLinksBySeif: {},
+    viewReqId: 0
+  };
 
   /* ── Sefaria API ─────────────────────────────────────── */
   const API = 'https://www.sefaria.org/api/v3/texts';
@@ -273,6 +280,91 @@
     const res = await fetch(url, { headers: { accept: 'application/json' } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
+  }
+
+  function parseMbRef(ref) {
+    if (typeof ref !== 'string') return [];
+    const m = ref.match(/^Mishnah Berurah (\d+):(\d+)(?:-(\d+))?$/);
+    if (!m) return [];
+    const siman = Number(m[1]);
+    const start = Number(m[2]);
+    const end = Number(m[3] || m[2]);
+    if (!siman || !start || !end || end < start) return [];
+    const out = [];
+    for (let i = start; i <= end; i++) out.push({ siman, seif: i });
+    return out;
+  }
+
+  async function getLinkedMbSeifim(siman, seif) {
+    if (!st.mbLinksBySeif[siman]) st.mbLinksBySeif[siman] = {};
+    if (Object.prototype.hasOwnProperty.call(st.mbLinksBySeif[siman], seif)) {
+      return st.mbLinksBySeif[siman][seif];
+    }
+
+    const anchorRef = `Shulchan Arukh, Orach Chayim.${siman}.${seif}`;
+    const url = `https://www.sefaria.org/api/links/${encodeURIComponent(anchorRef)}`;
+    const data = await apiFetch(url);
+    const links = Array.isArray(data) ? data : [];
+
+    const mbSet = new Set();
+    links.forEach(item => {
+      const isMB = item?.index_title === 'Mishnah Berurah'
+        || item?.collectiveTitle?.en === 'Mishnah Berurah'
+        || /^Mishnah Berurah /.test(item?.sourceRef || '')
+        || /^Mishnah Berurah /.test(item?.ref || '');
+      if (!isMB) return;
+
+      const refs = [
+        ...parseMbRef(item?.sourceRef),
+        ...parseMbRef(item?.ref)
+      ];
+      refs.forEach(r => {
+        if (r.siman === siman && r.seif > 0) mbSet.add(r.seif);
+      });
+    });
+
+    const result = [...mbSet].sort((a, b) => a - b);
+    st.mbLinksBySeif[siman][seif] = result;
+    return result;
+  }
+
+  function areConsecutive(nums) {
+    if (nums.length < 2) return true;
+    for (let i = 1; i < nums.length; i++) {
+      if (nums[i] !== nums[i - 1] + 1) return false;
+    }
+    return true;
+  }
+
+  function formatMbRef(siman, linkedMbSeifim, fallbackSeif) {
+    if (!linkedMbSeifim.length) {
+      return `סימן ${siman} ס״ק ${toHeb(fallbackSeif)}`;
+    }
+
+    if (linkedMbSeifim.length === 1) {
+      return `סימן ${siman} ס״ק ${toHeb(linkedMbSeifim[0])}`;
+    }
+
+    if (areConsecutive(linkedMbSeifim)) {
+      const first = linkedMbSeifim[0];
+      const last = linkedMbSeifim[linkedMbSeifim.length - 1];
+      return `סימן ${siman} ס״ק ${toHeb(first)}-${toHeb(last)}`;
+    }
+
+    return `סימן ${siman} ס״ק ${linkedMbSeifim.map(toHeb).join(', ')}`;
+  }
+
+  function renderMbHtml(linkedMbSeifim, fallbackSeif) {
+    const sourceSeifim = linkedMbSeifim.length ? linkedMbSeifim : [fallbackSeif];
+    const blocks = sourceSeifim
+      .map(n => ({ n, html: st.mbSeifim[n - 1] || '' }))
+      .filter(item => item.html);
+
+    if (!blocks.length) return '<div class="msg-empty">אין משנה ברורה לסעיף זה</div>';
+
+    return blocks.map(item => (
+      `<div><small>ס״ק ${toHeb(item.n)}</small><div>${item.html}</div></div>`
+    )).join('<hr style="border:none;border-top:1px solid #d8c6a0;margin:10px 0;">');
   }
 
   /**
@@ -313,6 +405,8 @@
     st.seif  = 1;
     st.saSeifim = [];
     st.mbSeifim = [];
+    st.mbLinksBySeif = {};
+    st.viewReqId = 0;
 
     setLoading();
 
@@ -368,23 +462,21 @@
   }
 
   /* ── Display a seif ──────────────────────────────────── */
-  function showSeif(seif) {
+  async function showSeif(seif) {
     const max = st.saSeifim.length;
     if (seif < 1 || seif > max) return;
+    const reqId = ++st.viewReqId;
     st.seif = seif;
 
-    const refLabel = `סימן ${st.siman} סעיף ${toHeb(seif)}`;
-    document.getElementById('sa-ref').textContent = refLabel;
-    document.getElementById('mb-ref').textContent = refLabel;
+    const saRefLabel = `סימן ${st.siman} סעיף ${toHeb(seif)}`;
+    document.getElementById('sa-ref').textContent = saRefLabel;
+    document.getElementById('mb-ref').textContent = `סימן ${st.siman} ס״ק ${toHeb(seif)}`;
 
     const saHtml = st.saSeifim[seif - 1] || '';
-    const mbHtml = st.mbSeifim[seif - 1] || '';
 
     document.getElementById('sa-text').innerHTML =
       cleanSA(saHtml) || '<div class="msg-empty">אין טקסט</div>';
-
-    document.getElementById('mb-text').innerHTML =
-      mbHtml || '<div class="msg-empty">אין משנה ברורה לסעיף זה</div>';
+    document.getElementById('mb-text').innerHTML = '<div class="msg-loading">טוען…</div>';
 
     /* Update pager button states */
     const prev = document.getElementById('pager-prev');
@@ -395,6 +487,18 @@
     document.querySelectorAll('#pager button[data-seif]').forEach(btn => {
       btn.classList.toggle('active', Number(btn.dataset.seif) === seif);
     });
+
+    let linkedMbSeifim = [];
+    try {
+      linkedMbSeifim = await getLinkedMbSeifim(st.siman, seif);
+    } catch (_) {
+      linkedMbSeifim = [];
+    }
+
+    if (reqId !== st.viewReqId) return;
+
+    document.getElementById('mb-ref').textContent = formatMbRef(st.siman, linkedMbSeifim, seif);
+    document.getElementById('mb-text').innerHTML = renderMbHtml(linkedMbSeifim, seif);
 
     /* Scroll both panels back to top */
     document.getElementById('sa-panel').scrollTop = 0;
