@@ -361,6 +361,11 @@
     'לא', 'לב', 'לג', 'לד', 'לה', 'לו', 'לז', 'לח', 'לט', 'מ'
   ];
   const toHeb = n => (n > 0 && n < HEB_NUM.length) ? HEB_NUM[n] : String(n);
+  const MAX_SIMAN = 697;
+  const MAX_REASONABLE_SEIF = 499;
+  const MAX_SEIF_DIGITS = 3;
+  const HIGHLIGHT_DURATION_MS = 1300;
+  const SIMAN_PAGER_WINDOW_SIZE = 9;
 
   /* ── App state ───────────────────────────────────────── */
   const st = {
@@ -384,7 +389,7 @@
 
   function parseMbRef(ref) {
     if (typeof ref !== 'string') return [];
-    const m = ref.match(/Mishnah Berurah (\d+):(\d+)(?:-(\d+))?/);
+    const m = ref.match(/^Mishnah Berurah (\d+):(\d+)(?:-(\d+))?$/);
     if (!m) return [];
     const siman = Number(m[1]);
     const start = Number(m[2]);
@@ -393,6 +398,13 @@
     const out = [];
     for (let i = start; i <= end; i++) out.push({ siman, seif: i });
     return out;
+  }
+
+  function parseMbRefLoose(text) {
+    if (typeof text !== 'string') return [];
+    const m = text.match(/Mishnah Berurah (\d+):(\d+)(?:-(\d+))?/);
+    if (!m) return [];
+    return parseMbRef(m[0]);
   }
 
   async function getLinkedMbSeifim(siman, seif) {
@@ -483,16 +495,16 @@
       marker.getAttribute('href') || ''
     ].join(' ');
 
-    const refs = parseMbRef(raw);
+    const refs = parseMbRefLoose(raw);
     if (refs.length && refs[0].siman === siman) return refs[0].seif;
 
     const order = toNumberIfValid(marker.getAttribute('data-order'));
     if (order) return order;
 
-    const nums = raw.match(/\b\d{1,3}\b/g) || [];
+    const nums = raw.match(new RegExp(`\\b\\d{1,${MAX_SEIF_DIGITS}}\\b`, 'g')) || [];
     for (const token of nums) {
       const n = Number(token);
-      if (n > 0 && n < 500 && n !== siman) return n;
+      if (n > 0 && n <= MAX_REASONABLE_SEIF && n !== siman) return n;
     }
     return null;
   }
@@ -512,7 +524,8 @@
       }
 
       const inferred = inferMarkerSeif(marker, st.siman);
-      const fallback = linkedMbSeifim[seq] || linkedMbSeifim[linkedMbSeifim.length - 1] || null;
+      const fallback = linkedMbSeifim[seq]
+        || (linkedMbSeifim.length ? linkedMbSeifim[linkedMbSeifim.length - 1] : null);
       const mbSeif = inferred || fallback;
       seq += 1;
 
@@ -540,7 +553,7 @@
     target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     target.classList.add('highlighted');
     if (st.highlightTimer) clearTimeout(st.highlightTimer);
-    st.highlightTimer = setTimeout(() => target.classList.remove('highlighted'), 1300);
+    st.highlightTimer = setTimeout(() => target.classList.remove('highlighted'), HIGHLIGHT_DURATION_MS);
   }
 
   /**
@@ -570,8 +583,6 @@
   }
 
   /* ── Load a siman ────────────────────────────────────── */
-  const MAX_SIMAN = 697;
-
   function setSimanInputValue(siman) {
     document.getElementById('siman-input').value = String(siman);
   }
@@ -646,10 +657,9 @@
     prev.disabled = st.siman <= 1;
     pager.appendChild(prev);
 
-    const windowSize = 9;
-    let start = Math.max(1, st.siman - Math.floor(windowSize / 2));
-    let end = Math.min(MAX_SIMAN, start + windowSize - 1);
-    start = Math.max(1, end - windowSize + 1);
+    let start = Math.max(1, st.siman - Math.floor(SIMAN_PAGER_WINDOW_SIZE / 2));
+    let end = Math.min(MAX_SIMAN, start + SIMAN_PAGER_WINDOW_SIZE - 1);
+    start = Math.max(1, end - SIMAN_PAGER_WINDOW_SIZE + 1);
 
     const addSimanBtn = (n) => {
       const btn = mkBtn(String(n), null, () => loadSiman(n));
