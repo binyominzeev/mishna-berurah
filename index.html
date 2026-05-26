@@ -25,11 +25,24 @@
       color: #f5e6c8;
       padding: 8px 18px;
       display: flex;
-      align-items: center;
-      gap: 14px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
       flex-shrink: 0;
-      flex-wrap: wrap;
       border-bottom: 2px solid #a07828;
+    }
+
+    .header-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-start;
     }
 
     .app-title {
@@ -41,6 +54,43 @@
     }
 
     .sep { color: #a07828; flex-shrink: 0; user-select: none; }
+
+    .nav-section {
+      border: 1px solid #6a4f0e;
+      border-radius: 6px;
+      padding: 4px 6px;
+      background: rgba(255, 248, 231, 0.08);
+      min-width: 0;
+      flex: 1 1 360px;
+    }
+
+    .nav-section-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .collapse-toggle {
+      width: 24px;
+      min-width: 24px;
+      height: 24px;
+      padding: 0;
+      font-weight: bold;
+      line-height: 1;
+    }
+
+    .collapsible-content {
+      margin-top: 5px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .nav-section.collapsed .collapsible-content {
+      display: none;
+    }
 
     /* Siman control */
     .siman-control {
@@ -111,6 +161,13 @@
       flex-wrap: wrap;
     }
 
+    #siman-pager {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      flex-wrap: wrap;
+    }
+
     /* ── Main layout ────────────────────────────────────── */
     main {
       display: flex;
@@ -171,6 +228,31 @@
     .text-body b    { font-size: 1.03em; }
     .text-body small { color: #555; }
 
+    .mb-inline-marker {
+      border: none;
+      background: transparent;
+      color: #3f2a10;
+      font: inherit;
+      font-size: 0.72em;
+      font-weight: bold;
+      padding: 0 2px;
+      margin-inline: 1px;
+      cursor: pointer;
+      text-decoration: underline dotted;
+      text-underline-offset: 1px;
+      vertical-align: super;
+      line-height: 1;
+    }
+    .mb-inline-marker:hover { color: #8b6914; }
+
+    .mb-seif-block {
+      border-radius: 4px;
+      transition: background-color 0.35s ease;
+    }
+    .mb-seif-block.highlighted {
+      background: #f0d07066;
+    }
+
     /* States */
     .msg-loading {
       text-align: center;
@@ -204,26 +286,43 @@
 <body>
 
 <header>
-  <span class="app-title">משנה ברורה</span>
-
-  <span class="sep">|</span>
-
-  <div class="siman-control">
-    <label for="siman-input">סימן:</label>
-    <input
-      type="number"
-      id="siman-input"
-      min="1" max="697" value="1"
-      onkeydown="if(event.key==='Enter') loadSiman()"
-    />
-    <button class="btn" onclick="loadSiman()">טען</button>
+  <div class="header-top">
+    <span class="app-title">משנה ברורה</span>
   </div>
 
-  <span class="sep">|</span>
+  <div class="header-nav">
+    <div class="nav-section" id="siman-nav-section">
+      <div class="nav-section-header">
+        <button type="button" class="btn collapse-toggle" id="siman-nav-toggle" aria-expanded="true" aria-controls="siman-nav-content">−</button>
+        <span class="pager-label">סימנים:</span>
+      </div>
+      <div class="collapsible-content" id="siman-nav-content">
+        <div class="siman-control">
+          <label for="siman-input">סימן:</label>
+          <input
+            type="number"
+            id="siman-input"
+            min="1" max="697" value="1"
+            onkeydown="if(event.key==='Enter') loadSiman()"
+          />
+          <button class="btn" onclick="loadSiman()">טען</button>
+        </div>
+        <span class="sep">|</span>
+        <div id="siman-pager"></div>
+      </div>
+    </div>
 
-  <div class="pager-wrap">
-    <span class="pager-label">סעיף:</span>
-    <div id="pager"></div>
+    <div class="nav-section" id="seif-nav-section">
+      <div class="nav-section-header">
+        <button type="button" class="btn collapse-toggle" id="seif-nav-toggle" aria-expanded="true" aria-controls="seif-nav-content">−</button>
+        <span class="pager-label">סעיפים:</span>
+      </div>
+      <div class="collapsible-content" id="seif-nav-content">
+        <div class="pager-wrap">
+          <div id="pager"></div>
+        </div>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -262,6 +361,13 @@
     'לא', 'לב', 'לג', 'לד', 'לה', 'לו', 'לז', 'לח', 'לט', 'מ'
   ];
   const toHeb = n => (n > 0 && n < HEB_NUM.length) ? HEB_NUM[n] : String(n);
+  const MAX_SIMAN = 697;
+  const MAX_REASONABLE_SEIF = 499;
+  const MAX_SEIF_DIGITS = 3;
+  const HIGHLIGHT_DURATION_MS = 1300;
+  const SIMAN_PAGER_WINDOW_SIZE = 9;
+  const ELLIPSIS = '…';
+  const POSSIBLE_SEIF_NUM_RE = new RegExp(`\\b\\d{1,${MAX_SEIF_DIGITS}}\\b`, 'g');
 
   /* ── App state ───────────────────────────────────────── */
   const st = {
@@ -270,7 +376,8 @@
     saSeifim: [],
     mbSeifim: [],
     mbLinksBySeif: {},
-    viewReqId: 0
+    viewReqId: 0,
+    highlightTimer: null
   };
 
   /* ── Sefaria API ─────────────────────────────────────── */
@@ -293,6 +400,13 @@
     const out = [];
     for (let i = start; i <= end; i++) out.push({ siman, seif: i });
     return out;
+  }
+
+  function parseMbRefLoose(text) {
+    if (typeof text !== 'string') return [];
+    const m = text.match(/Mishnah Berurah (\d+):(\d+)(?:-(\d+))?/);
+    if (!m) return [];
+    return parseMbRef(m[0]);
   }
 
   async function getLinkedMbSeifim(siman, seif) {
@@ -363,8 +477,86 @@
     if (!blocks.length) return '<div class="msg-empty">אין משנה ברורה לסעיף זה</div>';
 
     return blocks.map(item => (
-      `<div><small>ס״ק ${toHeb(item.n)}</small><div>${item.html}</div></div>`
+      `<div class="mb-seif-block" data-mb-seif-block="${item.n}"><small>ס״ק ${toHeb(item.n)}</small><div>${item.html}</div></div>`
     )).join('<hr style="border:none;border-top:1px solid #d8c6a0;margin:10px 0;">');
+  }
+
+  function toNumberIfValid(v) {
+    const n = Number(v);
+    return Number.isInteger(n) && n > 0 ? n : null;
+  }
+
+  function inferMarkerSeif(marker, siman) {
+    const raw = [
+      marker.textContent || '',
+      marker.getAttribute('title') || '',
+      marker.getAttribute('data-ref') || '',
+      marker.getAttribute('data-segment') || '',
+      marker.getAttribute('data-label') || '',
+      marker.getAttribute('aria-label') || '',
+      marker.getAttribute('href') || ''
+    ].join(' ');
+
+    const refs = parseMbRefLoose(raw);
+    if (refs.length && refs[0].siman === siman) return refs[0].seif;
+
+    const order = toNumberIfValid(marker.getAttribute('data-order'));
+    if (order) return order;
+
+    const nums = raw.match(POSSIBLE_SEIF_NUM_RE) || [];
+    for (const token of nums) {
+      const n = Number(token);
+      if (n > 0 && n <= MAX_REASONABLE_SEIF && n !== siman) return n;
+    }
+    return null;
+  }
+
+  function renderSaHtml(rawHtml, linkedMbSeifim) {
+    const div = document.createElement('div');
+    div.innerHTML = rawHtml || '';
+    const markers = [...div.querySelectorAll('i[data-commentator], i')];
+    let seq = 0;
+
+    markers.forEach(marker => {
+      const commentator = (marker.getAttribute('data-commentator') || '').toLowerCase();
+      const isMb = commentator.includes('mishnah berurah');
+      if (!isMb) {
+        marker.remove();
+        return;
+      }
+
+      const inferred = inferMarkerSeif(marker, st.siman);
+      const fallback = linkedMbSeifim[seq]
+        || (linkedMbSeifim.length ? linkedMbSeifim[linkedMbSeifim.length - 1] : null);
+      const mbSeif = inferred || fallback;
+      seq += 1;
+
+      if (!mbSeif) {
+        marker.remove();
+        return;
+      }
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'mb-inline-marker';
+      btn.dataset.mbSeif = String(mbSeif);
+      btn.title = `ס״ק ${toHeb(mbSeif)}`;
+      btn.textContent = toHeb(mbSeif);
+      marker.replaceWith(btn);
+    });
+
+    /* Normalize whitespace introduced by marker replacements. */
+    return div.innerHTML.replace(/ {2,}/g, ' ').trim();
+  }
+
+  function focusMbSeifBlock(mbSeif) {
+    const panel = document.getElementById('mb-panel');
+    const target = panel.querySelector(`[data-mb-seif-block="${mbSeif}"]`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target.classList.add('highlighted');
+    if (st.highlightTimer) clearTimeout(st.highlightTimer);
+    st.highlightTimer = setTimeout(() => target.classList.remove('highlighted'), HIGHLIGHT_DURATION_MS);
   }
 
   /**
@@ -394,13 +586,19 @@
   }
 
   /* ── Load a siman ────────────────────────────────────── */
-  async function loadSiman() {
-    const siman = parseInt(document.getElementById('siman-input').value, 10);
-    if (!siman || siman < 1 || siman > 697) {
-      alert('אנא הכנס מספר סימן בין 1 ל-697');
+  function setSimanInputValue(siman) {
+    document.getElementById('siman-input').value = String(siman);
+  }
+
+  async function loadSiman(targetSiman = null) {
+    const fromInput = parseInt(document.getElementById('siman-input').value, 10);
+    const siman = Number.isInteger(targetSiman) ? targetSiman : fromInput;
+    if (!siman || siman < 1 || siman > MAX_SIMAN) {
+      alert(`אנא הכנס מספר סימן בין 1 ל-${MAX_SIMAN}`);
       return;
     }
 
+    setSimanInputValue(siman);
     st.siman = siman;
     st.seif  = 1;
     st.saSeifim = [];
@@ -408,6 +606,7 @@
     st.mbLinksBySeif = {};
     st.viewReqId = 0;
 
+    buildSimanPager();
     setLoading();
 
     try {
@@ -425,6 +624,7 @@
       if (!st.saSeifim.length) throw new Error('לא נמצא טקסט לסימן זה');
 
       buildPager(st.saSeifim.length);
+      buildSimanPager();
       showSeif(1);
     } catch (err) {
       document.getElementById('sa-text').innerHTML =
@@ -452,6 +652,41 @@
     pager.appendChild(next);
   }
 
+  function buildSimanPager() {
+    const pager = document.getElementById('siman-pager');
+    pager.innerHTML = '';
+
+    const prev = mkBtn('◄ הקודם', 'siman-prev', () => loadSiman(st.siman - 1));
+    prev.disabled = st.siman <= 1;
+    pager.appendChild(prev);
+
+    const { start, end } = calculatePagerWindow(st.siman, MAX_SIMAN, SIMAN_PAGER_WINDOW_SIZE);
+
+    const addSimanBtn = (n) => {
+      const btn = mkBtn(String(n), null, () => loadSiman(n));
+      btn.dataset.siman = n;
+      btn.title = `סימן ${n}`;
+      btn.classList.toggle('active', n === st.siman);
+      pager.appendChild(btn);
+    };
+
+    if (start > 1) {
+      addSimanBtn(1);
+      if (start > 2) pager.appendChild(document.createTextNode(ELLIPSIS));
+    }
+
+    for (let i = start; i <= end; i++) addSimanBtn(i);
+
+    if (end < MAX_SIMAN) {
+      if (end < MAX_SIMAN - 1) pager.appendChild(document.createTextNode(ELLIPSIS));
+      addSimanBtn(MAX_SIMAN);
+    }
+
+    const next = mkBtn('הבא ►', 'siman-next', () => loadSiman(st.siman + 1));
+    next.disabled = st.siman >= MAX_SIMAN;
+    pager.appendChild(next);
+  }
+
   function mkBtn(label, id, handler) {
     const b = document.createElement('button');
     b.className = 'btn';
@@ -461,8 +696,15 @@
     return b;
   }
 
+  function calculatePagerWindow(current, max, windowSize) {
+    let start = Math.max(1, current - Math.floor(windowSize / 2));
+    let end = Math.min(max, start + windowSize - 1);
+    start = Math.max(1, end - windowSize + 1);
+    return { start, end };
+  }
+
   /* ── Display a seif ──────────────────────────────────── */
-  async function showSeif(seif) {
+  async function showSeif(seif, opts = {}) {
     const max = st.saSeifim.length;
     if (seif < 1 || seif > max) return;
     const reqId = ++st.viewReqId;
@@ -475,7 +717,7 @@
     const saHtml = st.saSeifim[seif - 1] || '';
 
     document.getElementById('sa-text').innerHTML =
-      cleanSA(saHtml) || '<div class="msg-empty">אין טקסט</div>';
+      (saHtml ? cleanSA(saHtml) : '<div class="msg-empty">אין טקסט</div>');
     document.getElementById('mb-text').innerHTML = '<div class="msg-loading">טוען…</div>';
 
     /* Update pager button states */
@@ -497,12 +739,15 @@
 
     if (reqId !== st.viewReqId) return;
 
+    document.getElementById('sa-text').innerHTML =
+      (saHtml ? renderSaHtml(saHtml, linkedMbSeifim) : '<div class="msg-empty">אין טקסט</div>');
     document.getElementById('mb-ref').textContent = formatMbRef(st.siman, linkedMbSeifim, seif);
     document.getElementById('mb-text').innerHTML = renderMbHtml(linkedMbSeifim, seif);
+    if (opts.focusMbSeif) focusMbSeifBlock(opts.focusMbSeif);
 
     /* Scroll both panels back to top */
     document.getElementById('sa-panel').scrollTop = 0;
-    document.getElementById('mb-panel').scrollTop = 0;
+    if (!opts.focusMbSeif) document.getElementById('mb-panel').scrollTop = 0;
   }
 
   /* ── Helpers ─────────────────────────────────────────── */
@@ -519,6 +764,29 @@
     return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  function setNavCollapsed(sectionId, toggleId, collapsed) {
+    const section = document.getElementById(sectionId);
+    const toggle = document.getElementById(toggleId);
+    section.classList.toggle('collapsed', collapsed);
+    toggle.textContent = collapsed ? '+' : '−';
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+  }
+
+  function initNavCollapsers() {
+    const defs = [
+      { sectionId: 'siman-nav-section', toggleId: 'siman-nav-toggle' },
+      { sectionId: 'seif-nav-section', toggleId: 'seif-nav-toggle' }
+    ];
+    defs.forEach(({ sectionId, toggleId }) => {
+      const btn = document.getElementById(toggleId);
+      btn.addEventListener('click', () => {
+        const section = document.getElementById(sectionId);
+        const isCollapsed = section.classList.contains('collapsed');
+        setNavCollapsed(sectionId, toggleId, !isCollapsed);
+      });
+    });
+  }
+
   /* ── Keyboard navigation ─────────────────────────────── */
   document.addEventListener('keydown', e => {
     if (e.target.closest('input, textarea, select, button, a')) return;
@@ -526,7 +794,17 @@
     if (e.key === 'ArrowLeft')  showSeif(st.seif + 1); /* RTL: left  = forward */
   });
 
+  document.getElementById('sa-text').addEventListener('click', e => {
+    const marker = e.target.closest('.mb-inline-marker');
+    if (!marker) return;
+    const mbSeif = Number(marker.dataset.mbSeif || 0);
+    if (!mbSeif) return;
+    showSeif(st.seif, { focusMbSeif: mbSeif });
+  });
+
   /* ── Bootstrap ───────────────────────────────────────── */
+  initNavCollapsers();
+  buildSimanPager();
   loadSiman();
 </script>
 </body>
