@@ -366,6 +366,8 @@
   const MAX_SEIF_DIGITS = 3;
   const HIGHLIGHT_DURATION_MS = 1300;
   const SIMAN_PAGER_WINDOW_SIZE = 9;
+  const ELLIPSIS = '…';
+  const POSSIBLE_SEIF_NUM_RE = new RegExp(`\\b\\d{1,${MAX_SEIF_DIGITS}}\\b`, 'g');
 
   /* ── App state ───────────────────────────────────────── */
   const st = {
@@ -501,7 +503,7 @@
     const order = toNumberIfValid(marker.getAttribute('data-order'));
     if (order) return order;
 
-    const nums = raw.match(new RegExp(`\\b\\d{1,${MAX_SEIF_DIGITS}}\\b`, 'g')) || [];
+    const nums = raw.match(POSSIBLE_SEIF_NUM_RE) || [];
     for (const token of nums) {
       const n = Number(token);
       if (n > 0 && n <= MAX_REASONABLE_SEIF && n !== siman) return n;
@@ -543,6 +545,7 @@
       marker.replaceWith(btn);
     });
 
+    /* Normalize whitespace introduced by marker replacements. */
     return div.innerHTML.replace(/ {2,}/g, ' ').trim();
   }
 
@@ -657,9 +660,7 @@
     prev.disabled = st.siman <= 1;
     pager.appendChild(prev);
 
-    let start = Math.max(1, st.siman - Math.floor(SIMAN_PAGER_WINDOW_SIZE / 2));
-    let end = Math.min(MAX_SIMAN, start + SIMAN_PAGER_WINDOW_SIZE - 1);
-    start = Math.max(1, end - SIMAN_PAGER_WINDOW_SIZE + 1);
+    const { start, end } = calculatePagerWindow(st.siman, MAX_SIMAN, SIMAN_PAGER_WINDOW_SIZE);
 
     const addSimanBtn = (n) => {
       const btn = mkBtn(String(n), null, () => loadSiman(n));
@@ -671,13 +672,13 @@
 
     if (start > 1) {
       addSimanBtn(1);
-      if (start > 2) pager.appendChild(document.createTextNode('…'));
+      if (start > 2) pager.appendChild(document.createTextNode(ELLIPSIS));
     }
 
     for (let i = start; i <= end; i++) addSimanBtn(i);
 
     if (end < MAX_SIMAN) {
-      if (end < MAX_SIMAN - 1) pager.appendChild(document.createTextNode('…'));
+      if (end < MAX_SIMAN - 1) pager.appendChild(document.createTextNode(ELLIPSIS));
       addSimanBtn(MAX_SIMAN);
     }
 
@@ -693,6 +694,13 @@
     if (id) b.id = id;
     b.addEventListener('click', handler);
     return b;
+  }
+
+  function calculatePagerWindow(current, max, windowSize) {
+    let start = Math.max(1, current - Math.floor(windowSize / 2));
+    let end = Math.min(max, start + windowSize - 1);
+    start = Math.max(1, end - windowSize + 1);
+    return { start, end };
   }
 
   /* ── Display a seif ──────────────────────────────────── */
