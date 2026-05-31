@@ -306,6 +306,24 @@
     .text-body b    { font-size: 1.03em; }
     .text-body small { color: #555; }
 
+    .panel-seif-nav {
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid #d8c6a0;
+    }
+
+    .panel-seif-nav .btn {
+      flex: 1 1 0;
+      min-height: 50px;
+      padding: 12px 16px;
+      font-size: 1rem;
+      font-weight: bold;
+      border-radius: 10px;
+    }
+
     .mb-inline-marker {
       border: none;
       background: transparent;
@@ -374,6 +392,17 @@
       .panel-mb  { flex: 0 0 42%; }
       .text-sa   { font-size: 1.05rem; }
     }
+
+    @media (max-width: 640px) {
+      .panel-seif-nav {
+        gap: 10px;
+      }
+
+      .panel-seif-nav .btn {
+        min-height: 56px;
+        font-size: 1.02rem;
+      }
+    }
   </style>
 </head>
 <body>
@@ -439,6 +468,10 @@
     <div class="text-body text-sa" id="sa-text">
       <div class="msg-loading">טוען…</div>
     </div>
+    <div class="panel-seif-nav" aria-label="ניווט בין סעיפים">
+      <button type="button" class="btn" id="panel-next-seif">הבא ►</button>
+      <button type="button" class="btn" id="panel-prev-seif">◄ הקודם</button>
+    </div>
   </section>
 
   <!-- ── Mishna Berura ──────────────────────────── -->
@@ -473,6 +506,7 @@
   const MAX_SEIF_DIGITS = 3;
   const HIGHLIGHT_DURATION_MS = 1300;
   const SIMAN_PAGER_WINDOW_SIZE = 9;
+  const LAST_SEIF_SENTINEL = Number.MAX_SAFE_INTEGER;
   const ELLIPSIS = '…';
   const POSSIBLE_SEIF_NUM_RE = new RegExp(`\\b\\d{1,${MAX_SEIF_DIGITS}}\\b`, 'g');
   const DEFAULT_ROUTE = { siman: 1, seif: 1 };
@@ -914,7 +948,7 @@
     const pager = document.getElementById('pager');
     pager.innerHTML = '';
 
-    const prev = mkBtn('◄ הקודם', 'pager-prev', () => showSeif(st.seif - 1));
+    const prev = mkBtn('◄ הקודם', 'pager-prev', () => navigateAdjacentSeif(-1));
     pager.appendChild(prev);
 
     for (let i = 1; i <= count; i++) {
@@ -924,7 +958,7 @@
       pager.appendChild(btn);
     }
 
-    const next = mkBtn('הבא ►', 'pager-next', () => showSeif(st.seif + 1));
+    const next = mkBtn('הבא ►', 'pager-next', () => navigateAdjacentSeif(1));
     pager.appendChild(next);
   }
 
@@ -1003,6 +1037,49 @@
     return { start, end };
   }
 
+  function canNavigateAdjacentSeif(direction) {
+    if (direction < 0) return st.seif > 1 || st.siman > 1;
+    if (direction > 0) return st.seif < st.saSeifim.length || st.siman < MAX_SIMAN;
+    return false;
+  }
+
+  async function navigateAdjacentSeif(direction) {
+    if (!canNavigateAdjacentSeif(direction)) return;
+
+    if (direction < 0) {
+      if (st.seif > 1) {
+        await showSeif(st.seif - 1);
+        return;
+      }
+
+      await loadSiman(st.siman - 1, { initialSeif: LAST_SEIF_SENTINEL });
+      return;
+    }
+
+    if (st.seif < st.saSeifim.length) {
+      await showSeif(st.seif + 1);
+      return;
+    }
+
+    await loadSiman(st.siman + 1, { initialSeif: 1 });
+  }
+
+  function syncAdjacentSeifButtons() {
+    const prevEnabled = canNavigateAdjacentSeif(-1);
+    const nextEnabled = canNavigateAdjacentSeif(1);
+    const buttonIds = [
+      ['pager-prev', prevEnabled],
+      ['pager-next', nextEnabled],
+      ['panel-prev-seif', prevEnabled],
+      ['panel-next-seif', nextEnabled]
+    ];
+
+    buttonIds.forEach(([id, enabled]) => {
+      const button = document.getElementById(id);
+      if (button) button.disabled = !enabled;
+    });
+  }
+
   /* ── Display a seif ──────────────────────────────────── */
   async function showSeif(seif, opts = {}) {
     const max = st.saSeifim.length;
@@ -1024,10 +1101,7 @@
     document.getElementById('mb-text').innerHTML = '<div class="msg-loading">טוען…</div>';
 
     /* Update pager button states */
-    const prev = document.getElementById('pager-prev');
-    const next = document.getElementById('pager-next');
-    if (prev) prev.disabled = seif <= 1;
-    if (next) next.disabled = seif >= max;
+    syncAdjacentSeifButtons();
 
     document.querySelectorAll('#pager button[data-seif]').forEach(btn => {
       btn.classList.toggle('active', Number(btn.dataset.seif) === seif);
@@ -1068,6 +1142,7 @@
     document.getElementById('pager').innerHTML = '';
     document.getElementById('sa-ref').textContent = '';
     document.getElementById('mb-ref').textContent = '';
+    syncAdjacentSeifButtons();
   }
 
   function syncCommentaryToggle() {
@@ -1149,6 +1224,12 @@
     syncCommentaryToggle();
   }
 
+  function initPanelSeifNav() {
+    document.getElementById('panel-prev-seif').addEventListener('click', () => navigateAdjacentSeif(-1));
+    document.getElementById('panel-next-seif').addEventListener('click', () => navigateAdjacentSeif(1));
+    syncAdjacentSeifButtons();
+  }
+
   function initRouteSync() {
     const applyRoute = () => {
       const { siman, seif } = readRouteState();
@@ -1164,8 +1245,8 @@
   /* ── Keyboard navigation ─────────────────────────────── */
   document.addEventListener('keydown', e => {
     if (e.target.closest('input, textarea, select, button, a')) return;
-    if (e.key === 'ArrowRight') showSeif(st.seif - 1); /* RTL: right = back */
-    if (e.key === 'ArrowLeft')  showSeif(st.seif + 1); /* RTL: left  = forward */
+    if (e.key === 'ArrowRight') navigateAdjacentSeif(-1); /* RTL: right = back */
+    if (e.key === 'ArrowLeft')  navigateAdjacentSeif(1); /* RTL: left  = forward */
   });
 
   document.getElementById('sa-text').addEventListener('click', e => {
@@ -1199,6 +1280,7 @@
   initNavCollapsers();
   initSimanPicker();
   initCommentaryToggle();
+  initPanelSeifNav();
   initRouteSync();
   buildSimanPager();
   const initialRoute = readRouteState();
