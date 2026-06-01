@@ -289,6 +289,10 @@
       text-decoration: none;
     }
 
+    .panel-mobile-toggle {
+      display: none;
+    }
+
     .panel-ref {
       font-size: 0.78rem;
       color: #7a6040;
@@ -394,6 +398,45 @@
     }
 
     @media (max-width: 640px) {
+      main {
+        position: relative;
+      }
+
+      .panel {
+        min-width: 0;
+        transition: transform 0.22s ease, opacity 0.22s ease, flex-basis 0.22s ease;
+        touch-action: pan-y;
+      }
+
+      .panel-mobile-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 42px;
+        min-height: 32px;
+        padding: 4px 10px;
+        font-size: 0.76rem;
+      }
+
+      body.mobile-single-left .panel-sa,
+      body.mobile-single-right .panel-mb {
+        flex: 1 1 100%;
+      }
+
+      body.mobile-single-left .panel-mb,
+      body.mobile-single-right .panel-sa {
+        display: none;
+      }
+
+      body.mobile-single-left .panel-sa,
+      body.mobile-single-right .panel-mb {
+        border-left-width: 0;
+      }
+
+      body.mobile-swipe-active .panel {
+        transition: none;
+      }
+
       .panel-seif-nav {
         gap: 10px;
       }
@@ -463,6 +506,7 @@
   <section class="panel panel-sa" id="sa-panel">
     <div class="panel-header">
       <span class="panel-name">שולחן ערוך אורח חיים</span>
+      <button type="button" class="btn panel-mobile-toggle" id="sa-mobile-toggle">פיצול</button>
       <span class="panel-ref" id="sa-ref"></span>
     </div>
     <div class="text-body text-sa" id="sa-text">
@@ -482,6 +526,7 @@
         <span class="sep">|</span>
         <button type="button" class="panel-name-toggle" id="commentary-toggle-bh">ביאור הלכה</button>
       </div>
+      <button type="button" class="btn panel-mobile-toggle" id="mb-mobile-toggle">פיצול</button>
       <span class="panel-ref" id="mb-ref"></span>
     </div>
     <div class="text-body text-mb" id="mb-text">
@@ -508,6 +553,8 @@
   const SIMAN_PAGER_WINDOW_SIZE = 9;
   const LAST_SEIF_SENTINEL = Number.MAX_SAFE_INTEGER;
   const ELLIPSIS = '…';
+  const MOBILE_BREAKPOINT = 640;
+  const SWIPE_TRIGGER_PX = 50;
   const POSSIBLE_SEIF_NUM_RE = new RegExp(`\\b\\d{1,${MAX_SEIF_DIGITS}}\\b`, 'g');
   const DEFAULT_ROUTE = { siman: 1, seif: 1 };
 
@@ -521,7 +568,9 @@
     mbLinksBySeif: {},
     activeCommentary: 'mb',
     viewReqId: 0,
-    highlightTimer: null
+    highlightTimer: null,
+    mobilePanelMode: 'split',
+    touchState: null
   };
 
   /* ── Sefaria API ─────────────────────────────────────── */
@@ -1157,6 +1206,153 @@
     return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  function isMobileViewport() {
+    return window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
+  }
+
+  function clearPanelTransforms() {
+    document.getElementById('sa-panel').style.transform = '';
+    document.getElementById('mb-panel').style.transform = '';
+  }
+
+  function syncMobilePanelButtons() {
+    const leftBtn = document.getElementById('sa-mobile-toggle');
+    const rightBtn = document.getElementById('mb-mobile-toggle');
+
+    if (!isMobileViewport()) {
+      leftBtn.hidden = true;
+      rightBtn.hidden = true;
+      return;
+    }
+
+    const split = st.mobilePanelMode === 'split';
+    leftBtn.hidden = st.mobilePanelMode === 'right';
+    rightBtn.hidden = st.mobilePanelMode === 'left';
+    leftBtn.textContent = split ? 'הרחב' : 'פיצול';
+    rightBtn.textContent = split ? 'הרחב' : 'פיצול';
+    leftBtn.setAttribute('aria-pressed', String(st.mobilePanelMode === 'left'));
+    rightBtn.setAttribute('aria-pressed', String(st.mobilePanelMode === 'right'));
+  }
+
+  function applyMobilePanelMode() {
+    const body = document.body;
+    const mobile = isMobileViewport();
+
+    body.classList.remove('mobile-single-left', 'mobile-single-right', 'mobile-swipe-active');
+
+    if (!mobile) {
+      clearPanelTransforms();
+      syncMobilePanelButtons();
+      return;
+    }
+
+    if (st.mobilePanelMode === 'left') {
+      body.classList.add('mobile-single-left');
+    } else if (st.mobilePanelMode === 'right') {
+      body.classList.add('mobile-single-right');
+    }
+
+    clearPanelTransforms();
+    syncMobilePanelButtons();
+  }
+
+  function setMobilePanelMode(mode) {
+    if (!['split', 'left', 'right'].includes(mode)) return;
+    st.mobilePanelMode = mode;
+    applyMobilePanelMode();
+  }
+
+  function toggleMobilePanelMode(side) {
+    if (!isMobileViewport()) return;
+    if (side !== 'left' && side !== 'right') return;
+    setMobilePanelMode(st.mobilePanelMode === side ? 'split' : side);
+  }
+
+  function switchSingleMobilePanel(direction) {
+    if (!isMobileViewport()) return;
+    if (st.mobilePanelMode === 'split') return;
+    if (direction === 'left' && st.mobilePanelMode === 'right') {
+      setMobilePanelMode('left');
+    }
+    if (direction === 'right' && st.mobilePanelMode === 'left') {
+      setMobilePanelMode('right');
+    }
+  }
+
+  function initMobilePanelControls() {
+    document.getElementById('sa-mobile-toggle').addEventListener('click', () => toggleMobilePanelMode('left'));
+    document.getElementById('mb-mobile-toggle').addEventListener('click', () => toggleMobilePanelMode('right'));
+    applyMobilePanelMode();
+    window.addEventListener('resize', applyMobilePanelMode);
+  }
+
+  function initMobileSwipe() {
+    const main = document.querySelector('main');
+
+    main.addEventListener('touchstart', e => {
+      if (!isMobileViewport() || st.mobilePanelMode === 'split' || e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      st.touchState = {
+        startX: touch.clientX,
+        startY: touch.clientY,
+        deltaX: 0,
+        dragging: false
+      };
+    }, { passive: true });
+
+    main.addEventListener('touchmove', e => {
+      if (!st.touchState || !isMobileViewport() || st.mobilePanelMode === 'split' || e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - st.touchState.startX;
+      const deltaY = touch.clientY - st.touchState.startY;
+
+      if (!st.touchState.dragging) {
+        if (Math.abs(deltaY) > Math.abs(deltaX)) {
+          st.touchState = null;
+          clearPanelTransforms();
+          document.body.classList.remove('mobile-swipe-active');
+          return;
+        }
+        st.touchState.dragging = true;
+      }
+
+      st.touchState.deltaX = deltaX;
+      document.body.classList.add('mobile-swipe-active');
+
+      const activePanel = st.mobilePanelMode === 'left'
+        ? document.getElementById('sa-panel')
+        : document.getElementById('mb-panel');
+
+      const directionAllowed = (st.mobilePanelMode === 'left' && deltaX < 0)
+        || (st.mobilePanelMode === 'right' && deltaX > 0);
+
+      activePanel.style.transform = directionAllowed
+        ? `translateX(${deltaX}px)`
+        : `translateX(${deltaX * 0.18}px)`;
+    }, { passive: true });
+
+    const finishSwipe = () => {
+      if (!st.touchState) return;
+
+      const { deltaX } = st.touchState;
+      document.body.classList.remove('mobile-swipe-active');
+      clearPanelTransforms();
+
+      if (Math.abs(deltaX) >= SWIPE_TRIGGER_PX) {
+        if (st.mobilePanelMode === 'left' && deltaX < 0) {
+          setMobilePanelMode('right');
+        } else if (st.mobilePanelMode === 'right' && deltaX > 0) {
+          setMobilePanelMode('left');
+        }
+      }
+
+      st.touchState = null;
+    };
+
+    main.addEventListener('touchend', finishSwipe);
+    main.addEventListener('touchcancel', finishSwipe);
+  }
+
   function setAllNavCollapsed(collapsed) {
     document.getElementById('header-nav').classList.toggle('collapsed', collapsed);
 
@@ -1281,6 +1477,8 @@
   initSimanPicker();
   initCommentaryToggle();
   initPanelSeifNav();
+  initMobilePanelControls();
+  initMobileSwipe();
   initRouteSync();
   buildSimanPager();
   const initialRoute = readRouteState();
